@@ -561,4 +561,99 @@ export const adminGetUsersByRole = async (req, res) => {
       error: error.message
     });
   }
+};
+
+// Admin: Get comprehensive dashboard statistics
+export const adminGetDashboardStats = async (req, res) => {
+  try {
+    // Get user statistics
+    const userStats = await User.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalUsers: { $sum: 1 },
+          totalCustomers: { $sum: { $cond: [{ $eq: ['$role', 'customer'] }, 1, 0] } },
+          totalMechanics: { $sum: { $cond: [{ $eq: ['$role', 'mechanic'] }, 1, 0] } },
+          activeUsers: { $sum: { $cond: ['$isActive', 1, 0] } },
+          pendingMechanics: { $sum: { $cond: [{ $and: [{ $eq: ['$role', 'mechanic'] }, { $eq: ['$isVerified', false] }] }, 1, 0] } }
+        }
+      }
+    ]);
+
+    // Get booking statistics
+    const bookingStats = await Booking.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          activeBookings: { $sum: { $cond: [{ $in: ['$status', ['pending', 'confirmed', 'in_progress']] }, 1, 0] } },
+          completedBookings: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          cancelledBookings: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] } },
+          totalRevenue: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+
+    // Get today's revenue
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayStats = await Booking.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: today, $lt: tomorrow },
+          status: 'completed'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          todayRevenue: { $sum: '$totalAmount' },
+          todayBookings: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const userResult = userStats[0] || {
+      totalUsers: 0,
+      totalCustomers: 0,
+      totalMechanics: 0,
+      activeUsers: 0,
+      pendingMechanics: 0
+    };
+
+    const bookingResult = bookingStats[0] || {
+      totalBookings: 0,
+      activeBookings: 0,
+      completedBookings: 0,
+      cancelledBookings: 0,
+      totalRevenue: 0
+    };
+
+    const todayResult = todayStats[0] || {
+      todayRevenue: 0,
+      todayBookings: 0
+    };
+
+    const combinedStats = {
+      ...userResult,
+      ...bookingResult,
+      ...todayResult
+    };
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        stats: combinedStats
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching dashboard statistics',
+      error: error.message
+    });
+  }
 }; 

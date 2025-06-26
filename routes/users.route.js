@@ -10,6 +10,7 @@ import {
   getUserServices,
   adminGetUserStats,
   adminGetUsersByRole,
+  adminGetDashboardStats,
 } from "../controllers/user.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -20,6 +21,7 @@ userRouter.use(protect);
 
 // Admin routes (must come before parameterized routes)
 userRouter.get("/admin/stats", restrictTo("admin"), adminGetUserStats);
+userRouter.get("/admin/dashboard-stats", restrictTo("admin"), adminGetDashboardStats);
 userRouter.get("/admin/role/:role", restrictTo("admin"), adminGetUsersByRole);
 
 // Get all users (admin only)
