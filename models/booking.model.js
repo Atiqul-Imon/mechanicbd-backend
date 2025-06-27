@@ -208,7 +208,39 @@ const bookingSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     }
-  }]
+  }],
+
+  // Rescheduling
+  reschedule: {
+    requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    requestedAt: Date,
+    oldDate: Date,
+    oldTime: String,
+    newDate: Date,
+    newTime: String,
+    status: {
+      type: String,
+      enum: ['none', 'requested', 'accepted', 'declined'],
+      default: 'none'
+    },
+    respondedAt: Date,
+    respondedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    note: String
+  },
+
+  // Refund
+  refund: {
+    isRefunded: { type: Boolean, default: false },
+    refundAmount: Number,
+    refundReason: String,
+    refundStatus: {
+      type: String,
+      enum: ['none', 'requested', 'approved', 'rejected', 'processed'],
+      default: 'none'
+    },
+    refundedAt: Date,
+    refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }
 }, {
   timestamps: true
 });

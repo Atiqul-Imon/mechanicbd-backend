@@ -1,4 +1,4 @@
-import Booking from "../models/booking.model.js";
+import Booking from "../models/booking.model.js"
 import Service from "../models/service.model.js";
 import User from "../models/user.model.js";
 
@@ -633,5 +633,172 @@ export const completeService = async (req, res) => {
       message: 'Error completing service',
       error: error.message
     });
+  }
+};
+
+// --- Refund Logic ---
+export const requestRefund = async (req, res) => {
+  try {
+    const { reason, amount } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ status: 'error', message: 'Booking not found' });
+    }
+    // Only customer can request refund, and only if paid and not already refunded
+    if (booking.customer.toString() !== req.user.id) {
+      return res.status(403).json({ status: 'error', message: 'Only the customer can request a refund' });
+    }
+    if (!booking.isPaid) {
+      return res.status(400).json({ status: 'error', message: 'Cannot refund unpaid booking' });
+    }
+    if (booking.refund && booking.refund.refundStatus !== 'none') {
+      return res.status(400).json({ status: 'error', message: 'Refund already requested or processed' });
+    }
+    booking.refund = {
+      isRefunded: false,
+      refundAmount: amount,
+      refundReason: reason,
+      refundStatus: 'requested',
+      requestedAt: new Date(),
+      requestedBy: req.user.id
+    };
+    await booking.save();
+    res.status(200).json({ status: 'success', data: { booking } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: 'Error requesting refund', error: error.message });
+  }
+};
+
+export const adminHandleRefund = async (req, res) => {
+  try {
+    const { action, note } = req.body; // action: 'approve' | 'reject' | 'process'
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ status: 'error', message: 'Booking not found' });
+    }
+    if (!booking.refund || booking.refund.refundStatus === 'none') {
+      return res.status(400).json({ status: 'error', message: 'No refund requested' });
+    }
+    if (action === 'approve') {
+      booking.refund.refundStatus = 'approved';
+      booking.refund.approvedAt = new Date();
+      booking.refund.approvedBy = req.user.id;
+    } else if (action === 'reject') {
+      booking.refund.refundStatus = 'rejected';
+      booking.refund.rejectedAt = new Date();
+      booking.refund.rejectedBy = req.user.id;
+      booking.refund.rejectNote = note;
+    } else if (action === 'process') {
+      if (booking.refund.refundStatus !== 'approved') {
+        return res.status(400).json({ status: 'error', message: 'Refund must be approved before processing' });
+      }
+      booking.refund.refundStatus = 'processed';
+      booking.refund.isRefunded = true;
+      booking.refund.refundedAt = new Date();
+      booking.refund.processedBy = req.user.id;
+    } else {
+      return res.status(400).json({ status: 'error', message: 'Invalid refund action' });
+    }
+    await booking.save();
+    res.status(200).json({ status: 'success', data: { booking } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: 'Error handling refund', error: error.message });
+  }
+};
+
+// --- Reschedule Logic ---
+export const requestReschedule = async (req, res) => {
+  try {
+    const { newDate, newTime, note } = req.body;
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ status: 'error', message: 'Booking not found' });
+    }
+    // Only customer or mechanic can request
+    if (
+      booking.customer.toString() !== req.user.id &&
+      booking.mechanic.toString() !== req.user.id
+    ) {
+      return res.status(403).json({ status: 'error', message: 'You cannot request reschedule for this booking' });
+    }
+    if (booking.reschedule && booking.reschedule.status === 'requested') {
+      return res.status(400).json({ status: 'error', message: 'Reschedule already requested' });
+    }
+    booking.reschedule = {
+      requestedBy: req.user.id,
+      requestedAt: new Date(),
+      oldDate: booking.scheduledDate,
+      oldTime: booking.scheduledTime,
+      newDate,
+      newTime,
+      status: 'requested',
+      note
+    };
+    await booking.save();
+    res.status(200).json({ status: 'success', data: { booking } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: 'Error requesting reschedule', error: error.message });
+  }
+};
+
+export const respondReschedule = async (req, res) => {
+  try {
+    const { action, note } = req.body; // action: 'accept' | 'decline'
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ status: 'error', message: 'Booking not found' });
+    }
+    // Only the other party can respond
+    const isCustomer = booking.customer.toString() === req.user.id;
+    const isMechanic = booking.mechanic.toString() === req.user.id;
+    if (!isCustomer && !isMechanic) {
+      return res.status(403).json({ status: 'error', message: 'You cannot respond to this reschedule' });
+    }
+    if (!booking.reschedule || booking.reschedule.status !== 'requested') {
+      return res.status(400).json({ status: 'error', message: 'No reschedule request to respond to' });
+    }
+    // Only the party who did NOT request can respond
+    if (booking.reschedule.requestedBy.toString() === req.user.id) {
+      return res.status(403).json({ status: 'error', message: 'You cannot respond to your own reschedule request' });
+    }
+    if (action === 'accept') {
+      booking.scheduledDate = booking.reschedule.newDate;
+      booking.scheduledTime = booking.reschedule.newTime;
+      booking.reschedule.status = 'accepted';
+      booking.reschedule.respondedAt = new Date();
+      booking.reschedule.respondedBy = req.user.id;
+      booking.reschedule.responseNote = note;
+    } else if (action === 'decline') {
+      booking.reschedule.status = 'declined';
+      booking.reschedule.respondedAt = new Date();
+      booking.reschedule.respondedBy = req.user.id;
+      booking.reschedule.responseNote = note;
+    } else {
+      return res.status(400).json({ status: 'error', message: 'Invalid reschedule action' });
+    }
+    await booking.save();
+    res.status(200).json({ status: 'success', data: { booking } });
+  } catch (error) {
+    res.status(400).json({ status: 'error', message: 'Error responding to reschedule', error: error.message });
+  }
+};
+
+export const deleteBooking = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ status: 'error', message: 'Booking not found' });
+    }
+    // Only the customer who owns the booking or an admin can delete
+    if (
+      req.user.role !== 'admin' &&
+      booking.customer.toString() !== req.user.id
+    ) {
+      return res.status(403).json({ status: 'error', message: 'You do not have permission to delete this booking' });
+    }
+    await booking.deleteOne();
+    res.status(200).json({ status: 'success', message: 'Booking deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Error deleting booking', error: error.message });
   }
 }; 

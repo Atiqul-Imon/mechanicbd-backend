@@ -10,6 +10,11 @@ import {
   adminGetAllBookings,
   adminGetBookingStats,
   completeService,
+  requestRefund,
+  adminHandleRefund,
+  requestReschedule,
+  respondReschedule,
+  deleteBooking,
 } from "../controllers/booking.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -27,6 +32,15 @@ bookingRouter.patch("/:id/status", updateBookingStatus);
 bookingRouter.patch("/:id/cancel", cancelBooking);
 bookingRouter.patch("/:id/complete", completeService);
 bookingRouter.post("/:id/review", restrictTo("customer"), addReview);
+bookingRouter.delete('/:id', deleteBooking);
+
+// Refund routes
+bookingRouter.post('/:id/refund', restrictTo('customer'), requestRefund);
+bookingRouter.patch('/:id/refund', restrictTo('admin'), adminHandleRefund);
+
+// Reschedule routes
+bookingRouter.post('/:id/reschedule', requestReschedule); // customer or mechanic
+bookingRouter.patch('/:id/reschedule', respondReschedule); // other party responds
 
 // Admin routes
 bookingRouter.get("/admin/all", restrictTo("admin"), adminGetAllBookings);
