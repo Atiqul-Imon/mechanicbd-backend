@@ -8,6 +8,8 @@ import authRouter from './routes/auth.route..js';
 import serviceRouter from './routes/services.route.js';
 import bookingRouter from './routes/bookings.route.js'; 
 import userRouter from './routes/users.route.js';
+import reviewRouter from './routes/reviews.route.js';
+import paymentRouter from './routes/payments.route.js';
 
 dotenv.config();
 const app = express();
@@ -26,9 +28,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/services", serviceRouter);
 app.use('/api/bookings', bookingRouter);
 app.use('/api/users', userRouter);
-
-
-
+app.use('/api/reviews', reviewRouter);
+app.use('/api/payments', paymentRouter);
 
 // MongoDB connection
 mongoose.connect(config.MONGO_URI)

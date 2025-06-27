@@ -1,11 +1,12 @@
 import mongoose from 'mongoose';
 
+console.log('Booking model file loaded');
+
 const bookingSchema = new mongoose.Schema({
   // Basic Information
   bookingNumber: {
     type: String,
-    unique: true,
-    required: true
+    unique: true
   },
 
   // Service and Mechanic
@@ -40,7 +41,6 @@ const bookingSchema = new mongoose.Schema({
 
   estimatedDuration: {
     type: Number, // in minutes
-    required: [true, 'Estimated duration is required']
   },
 
   // Location
@@ -87,7 +87,7 @@ const bookingSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'disputed'],
-    default: 'pending'
+    default: 'confirmed'
   },
 
   statusHistory: [{
@@ -114,8 +114,22 @@ const bookingSchema = new mongoose.Schema({
   // Payment
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'refunded', 'failed'],
+    enum: ['pending', 'paid', 'failed'],
     default: 'pending'
+  },
+
+  isPaid: {
+    type: Boolean,
+    default: false
+  },
+
+  paidAt: {
+    type: Date
+  },
+
+  // Service completion tracking
+  completedAt: {
+    type: Date
   },
 
   paymentMethod: {
@@ -211,6 +225,7 @@ bookingSchema.index({ createdAt: -1 });
 
 // Generate booking number before saving
 bookingSchema.pre('save', async function (next) {
+  console.log('Booking pre-save hook running. isNew:', this.isNew, 'Current bookingNumber:', this.bookingNumber);
   if (this.isNew) {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
@@ -227,6 +242,7 @@ bookingSchema.pre('save', async function (next) {
 
     const sequence = (count + 1).toString().padStart(3, '0');
     this.bookingNumber = `MB${year}${month}${day}${sequence}`;
+    console.log('Generated bookingNumber:', this.bookingNumber);
   }
 
   // Add status to history when status changes

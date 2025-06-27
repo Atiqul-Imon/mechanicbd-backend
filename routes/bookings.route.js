@@ -9,6 +9,7 @@ import {
   getBookingStats,
   adminGetAllBookings,
   adminGetBookingStats,
+  completeService,
 } from "../controllers/booking.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -24,6 +25,7 @@ bookingRouter.get("/stats", getBookingStats);
 bookingRouter.get("/:id", getBooking);
 bookingRouter.patch("/:id/status", updateBookingStatus);
 bookingRouter.patch("/:id/cancel", cancelBooking);
+bookingRouter.patch("/:id/complete", completeService);
 bookingRouter.post("/:id/review", restrictTo("customer"), addReview);
 
 // Admin routes

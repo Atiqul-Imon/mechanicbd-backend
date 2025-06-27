@@ -25,12 +25,12 @@ serviceRouter.get("/admin", adminGetAllServices);
 serviceRouter.patch("/admin/:id/toggle", restrictTo("admin"), adminToggleServiceStatus);
 
 // Mechanic routes
-serviceRouter.post("/", restrictTo("mechanic", "admin"), createService);
-serviceRouter.get("/mechanic/my", restrictTo("mechanic", "admin"), getServicesByMechanic);
+serviceRouter.post("/", protect, restrictTo("mechanic", "admin"), createService);
+serviceRouter.get("/mechanic/my", protect, restrictTo("mechanic", "admin"), getServicesByMechanic);
 
 // Parameterized routes (must come after specific routes)
 serviceRouter.get("/:id", getService);
-serviceRouter.patch("/:id", restrictTo("mechanic", "admin"), updateService);
-serviceRouter.delete("/:id", restrictTo("mechanic", "admin"), deleteService);
+serviceRouter.patch("/:id", protect, restrictTo("mechanic", "admin"), updateService);
+serviceRouter.delete("/:id", protect, restrictTo("mechanic", "admin"), deleteService);
 
 export default serviceRouter; 

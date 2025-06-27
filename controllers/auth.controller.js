@@ -42,13 +42,19 @@ export const register = async (req, res) => {
     }
 
     // Create new user
-    const user = await User.create({
+    const userData = {
       fullName,
       phoneNumber,
       email,
       password,
       role,
-    });
+    };
+    if (role === 'mechanic') {
+      if (req.body.skills) userData.skills = req.body.skills;
+      if (req.body.experience) userData.experience = req.body.experience;
+      if (req.body.hourlyRate) userData.hourlyRate = req.body.hourlyRate;
+    }
+    const user = await User.create(userData);
 
     // Generate OTP for phone verification
     const otp = user.generateOTP();

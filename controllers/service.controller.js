@@ -113,6 +113,12 @@ export const getService = async (req, res) => {
 // Create new service (for mechanics and admins)
 export const createService = async (req, res) => {
   try {
+    if (!req.user || !req.user.role) {
+      return res.status(401).json({
+        status: 'error',
+        message: 'Unauthorized: user not found or role missing.'
+      });
+    }
     console.log('createService called. req.user:', req.user);
     // Debug log for request body
     console.log('createService req.body:', req.body);
