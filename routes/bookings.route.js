@@ -15,6 +15,7 @@ import {
   requestReschedule,
   respondReschedule,
   deleteBooking,
+  getMechanicBookings,
 } from "../controllers/booking.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -27,6 +28,11 @@ bookingRouter.use(protect);
 bookingRouter.post("/", restrictTo("customer"), createBooking);
 bookingRouter.get("/", getAllBookings);
 bookingRouter.get("/stats", getBookingStats);
+
+// --- Place this BEFORE any route with /:id ---
+bookingRouter.get("/mechanic", restrictTo("mechanic"), getMechanicBookings);
+
+// Routes with :id (must come after /mechanic)
 bookingRouter.get("/:id", getBooking);
 bookingRouter.patch("/:id/status", updateBookingStatus);
 bookingRouter.patch("/:id/cancel", cancelBooking);

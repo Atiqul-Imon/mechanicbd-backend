@@ -801,4 +801,40 @@ export const deleteBooking = async (req, res) => {
   } catch (error) {
     res.status(500).json({ status: 'error', message: 'Error deleting booking', error: error.message });
   }
+};
+
+// Mechanic: Get own bookings
+export const getMechanicBookings = async (req, res) => {
+  try {
+    const mechanicId = req.user._id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const bookings = await Booking.find({ mechanic: mechanicId })
+      .populate('service', 'title category basePrice')
+      .populate('customer', 'fullName phoneNumber profilePhoto')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Booking.countDocuments({ mechanic: mechanicId });
+
+    res.status(200).json({
+      status: 'success',
+      results: bookings.length,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total
+      },
+      data: { bookings }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching booking',
+      error: error.message
+    });
+  }
 }; 

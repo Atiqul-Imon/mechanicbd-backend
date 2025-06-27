@@ -257,24 +257,34 @@ bookingSchema.index({ createdAt: -1 });
 
 // Generate booking number before saving
 bookingSchema.pre('save', async function (next) {
-  console.log('Booking pre-save hook running. isNew:', this.isNew, 'Current bookingNumber:', this.bookingNumber);
   if (this.isNew) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-
-    // Get count of bookings for today
-    const todayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const todayEnd = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
-
-    const count = await mongoose.model('Booking').countDocuments({
-      createdAt: { $gte: todayStart, $lt: todayEnd }
-    });
-
-    const sequence = (count + 1).toString().padStart(3, '0');
-    this.bookingNumber = `MB${year}${month}${day}${sequence}`;
-    console.log('Generated bookingNumber:', this.bookingNumber);
+    let attempts = 0;
+    let unique = false;
+    let bookingNumber;
+    while (!unique && attempts < 3) {
+      const now = new Date();
+      const pad = n => n.toString().padStart(2, '0');
+      const datePart = [
+        now.getFullYear(),
+        pad(now.getMonth() + 1),
+        pad(now.getDate())
+      ].join('');
+      const timePart = [
+        pad(now.getHours()),
+        pad(now.getMinutes()),
+        pad(now.getSeconds())
+      ].join('');
+      const randomPart = Math.floor(1000 + Math.random() * 9000); // 4 digits
+      bookingNumber = `MB-${datePart}-${timePart}-${randomPart}`;
+      // Check uniqueness
+      const exists = await mongoose.model('Booking').exists({ bookingNumber });
+      if (!exists) unique = true;
+      attempts++;
+    }
+    if (!unique) {
+      return next(new Error('Could not generate a unique booking number. Please try again.'));
+    }
+    this.bookingNumber = bookingNumber;
   }
 
   // Add status to history when status changes

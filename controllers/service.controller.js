@@ -38,15 +38,16 @@ export const getAllServices = async (req, res) => {
       sort.createdAt = -1; // Default sort by newest
     }
     
-    const services = await Service.find(filter)
-      .populate('mechanic', 'fullName profilePhoto averageRating totalReviews')
+    // Fetch services and populate mechanic
+    let services = await Service.find(filter)
+      .populate('mechanic', 'fullName profilePhoto averageRating totalReviews isAvailable')
       .sort(sort)
       .skip(skip)
       .limit(limit)
-      .lean(); // Convert to plain objects for better performance
-    
-    const total = await Service.countDocuments(filter);
-    
+      .lean();
+    // Filter out services where mechanic is not available
+    services = services.filter(s => s.mechanic && s.mechanic.isAvailable !== false);
+    const total = services.length;
     res.status(200).json({
       status: 'success',
       results: services.length,
@@ -280,13 +281,12 @@ export const searchServices = async (req, res) => {
         filter.basePrice.$lte = parseFloat(maxPrice);
       }
     }
-    
-    const services = await Service.find(filter)
-      .populate('mechanic', 'fullName profilePhoto averageRating')
+    let services = await Service.find(filter)
+      .populate('mechanic', 'fullName profilePhoto averageRating isAvailable')
       .sort(q ? { score: { $meta: 'textScore' } } : { averageRating: -1 })
       .limit(20)
       .lean();
-    
+    services = services.filter(s => s.mechanic && s.mechanic.isAvailable !== false);
     res.status(200).json({
       status: 'success',
       results: services.length,

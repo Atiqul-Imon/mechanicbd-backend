@@ -656,4 +656,36 @@ export const adminGetDashboardStats = async (req, res) => {
       error: error.message
     });
   }
+};
+
+// Mechanic: Update availability (pause/resume all services)
+export const updateAvailability = async (req, res) => {
+  try {
+    if (req.user.role !== 'mechanic') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only mechanics can update availability.'
+      });
+    }
+    const { isAvailable } = req.body;
+    if (typeof isAvailable !== 'boolean') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'isAvailable must be a boolean.'
+      });
+    }
+    req.user.isAvailable = isAvailable;
+    await req.user.save();
+    res.status(200).json({
+      status: 'success',
+      message: `Availability updated to ${isAvailable ? 'available' : 'unavailable'}`,
+      data: { isAvailable: req.user.isAvailable }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Error updating availability',
+      error: error.message
+    });
+  }
 }; 

@@ -11,6 +11,7 @@ import {
   adminGetUserStats,
   adminGetUsersByRole,
   adminGetDashboardStats,
+  updateAvailability,
 } from "../controllers/user.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -40,6 +41,7 @@ userRouter.get("/me/stats", getUserStats);
 userRouter.get("/me/bookings", getUserBookings);
 userRouter.get("/me/services", getUserServices);
 userRouter.patch("/me", updateUser);
+userRouter.patch("/me/availability", updateAvailability);
 
 // User routes (admin or self)
 userRouter.get("/:id", getUser);

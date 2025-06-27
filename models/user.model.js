@@ -44,6 +44,11 @@ const userSchema = new mongoose.Schema({
     default: true
   },
   
+  isAvailable: {
+    type: Boolean,
+    default: true
+  },
+  
   isVerified: {
     type: Boolean,
     default: false
