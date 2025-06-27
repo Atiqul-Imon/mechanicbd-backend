@@ -84,6 +84,11 @@ const serviceSchema = new mongoose.Schema({
   },
   
   // Status and Availability
+  status: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'pending',
+  },
   isActive: {
     type: Boolean,
     default: true

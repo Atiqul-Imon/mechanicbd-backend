@@ -27,6 +27,7 @@ export const getAllServices = async (req, res) => {
     const skip = (page - 1) * limit;
     
     const filter = createFilter(req.query);
+    filter.status = 'approved'; // Only show approved services
     
     // Build sort object
     const sort = {};
@@ -150,7 +151,8 @@ export const createService = async (req, res) => {
       coordinates,
       tags,
       searchKeywords,
-      mechanic: mechanic._id
+      mechanic: mechanic._id,
+      status: 'pending', // Always set to pending on creation
     });
 
     console.log('✅ Service created successfully:', service);
@@ -376,8 +378,7 @@ export const adminGetAllServices = async (req, res) => {
     
     const filter = {};
     if (req.query.status) {
-      if (req.query.status === 'active') filter.isActive = true;
-      if (req.query.status === 'inactive') filter.isActive = false;
+      filter.status = req.query.status;
     }
     
     const services = await Service.find(filter)
@@ -436,5 +437,35 @@ export const adminToggleServiceStatus = async (req, res) => {
       message: 'Error toggling service status',
       error: error.message
     });
+  }
+};
+
+// Admin: Approve a service
+export const adminApproveService = async (req, res) => {
+  try {
+    const service = await Service.findById(req.params.id);
+    if (!service) {
+      return res.status(404).json({ status: 'error', message: 'Service not found' });
+    }
+    service.status = 'approved';
+    await service.save();
+    res.status(200).json({ status: 'success', data: { service } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Error approving service', error: error.message });
+  }
+};
+
+// Admin: Reject a service
+export const adminRejectService = async (req, res) => {
+  try {
+    const service = await Service.findById(req.params.id);
+    if (!service) {
+      return res.status(404).json({ status: 'error', message: 'Service not found' });
+    }
+    service.status = 'rejected';
+    await service.save();
+    res.status(200).json({ status: 'success', data: { service } });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: 'Error rejecting service', error: error.message });
   }
 }; 

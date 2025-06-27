@@ -10,6 +10,8 @@ import {
   getServiceCategories,
   adminGetAllServices,
   adminToggleServiceStatus,
+  adminApproveService,
+  adminRejectService,
 } from "../controllers/service.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -23,6 +25,8 @@ serviceRouter.get("/categories", getServiceCategories);
 // Admin routes (must come before parameterized routes)
 serviceRouter.get("/admin", adminGetAllServices);
 serviceRouter.patch("/admin/:id/toggle", restrictTo("admin"), adminToggleServiceStatus);
+serviceRouter.patch("/admin/:id/approve", protect, restrictTo("admin"), adminApproveService);
+serviceRouter.patch("/admin/:id/reject", protect, restrictTo("admin"), adminRejectService);
 
 // Mechanic routes
 serviceRouter.post("/", protect, restrictTo("mechanic", "admin"), createService);
