@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: mechanicbd-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: "90d"
+    healthCheckPath: /api/health
+    autoDeploy: true
+    branch: main 

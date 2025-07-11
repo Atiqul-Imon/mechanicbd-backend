@@ -10,6 +10,7 @@ import bookingRouter from './routes/bookings.route.js';
 import userRouter from './routes/users.route.js';
 import reviewRouter from './routes/reviews.route.js';
 import paymentRouter from './routes/payments.route.js';
+import healthRouter from './routes/health.route.js';
 
 dotenv.config();
 const app = express();
@@ -30,6 +31,7 @@ app.use('/api/bookings', bookingRouter);
 app.use('/api/users', userRouter);
 app.use('/api/reviews', reviewRouter);
 app.use('/api/payments', paymentRouter);
+app.use('/api', healthRouter);
 
 // MongoDB connection
 mongoose.connect(config.MONGO_URI)
