@@ -24,7 +24,9 @@ try {
     maxRetriesPerRequest: 3,
     lazyConnect: true, // Don't connect immediately
     retryDelayOnClusterDown: 300,
-    enableOfflineQueue: false
+    enableOfflineQueue: true, // Enable offline queue for better error handling
+    connectTimeout: 5000, // 5 second timeout
+    commandTimeout: 3000 // 3 second command timeout
   });
   
   redis.on('error', (err) => {
@@ -34,6 +36,15 @@ try {
   
   redis.on('connect', () => {
     console.log('✅ Redis connected successfully');
+  });
+  
+  redis.on('ready', () => {
+    console.log('✅ Redis is ready');
+  });
+  
+  redis.on('close', () => {
+    console.log('Redis connection closed');
+    redis = null;
   });
 } catch (error) {
   console.log('⚠️ Redis not available, continuing without Redis');
@@ -183,19 +194,24 @@ const startServer = async () => {
   try {
     await connectDB();
     
-    // Configure Redis adapter if Redis is available
+    // Configure Redis adapter only if Redis is working
     if (redis) {
       try {
+        // Test Redis connection
+        await redis.ping();
+        console.log('✅ Redis connection test successful');
+        
         const { createAdapter } = await import('@socket.io/redis-adapter');
         const pubClient = redis;
         const subClient = redis.duplicate();
         io.adapter(createAdapter(pubClient, subClient));
         console.log('✅ Socket.io Redis adapter configured');
       } catch (error) {
-        console.log('⚠️ Failed to configure Redis adapter:', error.message);
+        console.log('⚠️ Redis connection failed:', error.message);
+        console.log('⚠️ Socket.io running without Redis adapter');
       }
     } else {
-      console.log('⚠️ Socket.io running without Redis adapter');
+      console.log('⚠️ Socket.io running without Redis adapter (Redis not available)');
     }
     
     server.listen(PORT, () => {
