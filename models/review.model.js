@@ -1,78 +1,95 @@
 import mongoose from 'mongoose';
 
 const reviewSchema = new mongoose.Schema({
-  service: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Service',
-    required: true,
-  },
-  mechanic: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: false,
-  },
+  // Review details
   customer: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: [true, 'Customer is required']
   },
-  booking: {
+
+  service: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Booking',
-    required: true,
-    unique: true, // Only one review per booking
+    ref: 'Service',
+    required: [true, 'Service is required']
   },
+
+  mechanic: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: [true, 'Mechanic is required']
+  },
+
+  // Rating and feedback
   rating: {
     type: Number,
-    min: 1,
-    max: 5,
-    required: true,
+    required: [true, 'Rating is required'],
+    min: [1, 'Rating must be at least 1'],
+    max: [5, 'Rating cannot exceed 5']
   },
+
   comment: {
     type: String,
-    trim: true,
-    maxlength: 1000,
+    maxlength: [1000, 'Review comment cannot exceed 1000 characters'],
+    trim: true
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+
+  // Review status
   isApproved: {
     type: Boolean,
-    default: true, // Set to false if you want admin moderation
+    default: true // Auto-approve in development
   },
-});
 
-// Static method to calculate average rating for a service
-reviewSchema.statics.calcAverageRating = async function(serviceId) {
-  const stats = await this.aggregate([
-    { $match: { service: serviceId, isApproved: true } },
-    { $group: {
-      _id: '$service',
-      avgRating: { $avg: '$rating' },
-      nRating: { $sum: 1 },
-    }},
-  ]);
-  if (stats.length > 0) {
-    await mongoose.model('Service').findByIdAndUpdate(serviceId, {
-      averageRating: stats[0].avgRating,
-      totalReviews: stats[0].nRating,
-    });
-  } else {
-    await mongoose.model('Service').findByIdAndUpdate(serviceId, {
-      averageRating: 0,
-      totalReviews: 0,
-    });
+  // Review metadata
+  helpfulCount: {
+    type: Number,
+    default: 0
+  },
+
+  reportedCount: {
+    type: Number,
+    default: 0
+  },
+
+  isReported: {
+    type: Boolean,
+    default: false
+  },
+
+  // Admin actions
+  adminNotes: {
+    type: String,
+    maxlength: [500, 'Admin notes cannot exceed 500 characters']
+  },
+
+  moderatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
+
+  moderatedAt: {
+    type: Date
   }
-};
+}, {
+  timestamps: true
+});
 
-// Post-save and post-remove hooks to update average rating
-reviewSchema.post('save', function() {
-  this.constructor.calcAverageRating(this.service);
+// Indexes for better query performance
+reviewSchema.index({ service: 1, isApproved: 1 });
+reviewSchema.index({ mechanic: 1, isApproved: 1 });
+reviewSchema.index({ customer: 1 });
+reviewSchema.index({ rating: 1 });
+reviewSchema.index({ createdAt: -1 });
+
+// Virtual for average rating calculation
+reviewSchema.virtual('averageRating').get(function() {
+  return this.rating;
 });
-reviewSchema.post('remove', function() {
-  this.constructor.calcAverageRating(this.service);
-});
+
+// Ensure virtuals are included in JSON output
+reviewSchema.set('toJSON', { virtuals: true });
+reviewSchema.set('toObject', { virtuals: true });
 
 const Review = mongoose.model('Review', reviewSchema);
+
 export default Review; 

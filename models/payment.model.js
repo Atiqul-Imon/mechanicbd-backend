@@ -1,14 +1,14 @@
 import mongoose from 'mongoose';
 
 const paymentSchema = new mongoose.Schema({
-  // Basic Information
+  // Payment identification
   paymentId: {
     type: String,
     unique: true,
-    required: true
+    required: [true, 'Payment ID is required']
   },
 
-  // Booking Reference
+  // Related entities
   booking: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Booking',
@@ -27,150 +27,159 @@ const paymentSchema = new mongoose.Schema({
     required: [true, 'Mechanic is required']
   },
 
-  // Payment Details
+  // Payment details
   amount: {
     type: Number,
     required: [true, 'Amount is required'],
-    min: [1, 'Amount must be at least 1']
+    min: [0, 'Amount cannot be negative']
   },
 
-  currency: {
-    type: String,
-    default: 'BDT',
-    enum: ['BDT']
-  },
-
-  // Payment Method (Bangladesh Mobile Financial Services)
   paymentMethod: {
     type: String,
-    required: [true, 'Payment method is required'],
-    enum: ['bkash', 'nagad', 'rocket', 'upay', 'tap', 'sure_cash']
+    enum: ['cash', 'card', 'mobile_banking', 'bank_transfer', 'bkash', 'nagad', 'rocket', 'upay', 'tap', 'sure_cash'],
+    required: [true, 'Payment method is required']
   },
 
-  // Payment Timing (Arogga-style)
-  paymentTiming: {
-    type: String,
-    enum: ['before_service', 'after_service'],
-    required: true
-  },
-
-  // Payment Status
+  // Payment status
   status: {
     type: String,
-    enum: ['pending', 'processing', 'completed', 'failed', 'cancelled', 'refunded'],
+    enum: ['pending', 'completed', 'failed', 'cancelled', 'refunded'],
     default: 'pending'
   },
 
-  // Transaction Details
-  transactionId: {
+  // Payment timing (Arogga-style)
+  paymentTiming: {
     type: String,
-    unique: true,
-    sparse: true // Allow null/undefined values
+    enum: ['before_service', 'after_service'],
+    default: 'before_service'
   },
 
-  // Mobile Financial Service Specific Fields
+  // MFS details
   mfsDetails: {
     senderNumber: {
       type: String,
-      required: [true, 'Sender number is required']
+      required: function() { return ['bkash', 'nagad', 'rocket', 'upay', 'tap', 'sure_cash'].includes(this.paymentMethod); }
     },
     receiverNumber: {
       type: String,
-      required: [true, 'Receiver number is required']
+      required: function() { return ['bkash', 'nagad', 'rocket', 'upay', 'tap', 'sure_cash'].includes(this.paymentMethod); }
     },
-    transactionReference: String,
-    counterNumber: String,
-    storeId: String
+    transactionId: String,
+    transactionReference: String
   },
 
-  // Payment Gateway Response
-  gatewayResponse: {
-    success: Boolean,
-    message: String,
-    code: String,
-    timestamp: Date,
-    rawResponse: mongoose.Schema.Types.Mixed
+  // Payment details
+  paymentDetails: {
+    transactionId: String,
+    paymentDate: Date,
+    gateway: String,
+    gatewayResponse: {
+      success: Boolean,
+      message: String,
+      code: String,
+      timestamp: Date,
+      rawResponse: mongoose.Schema.Types.Mixed
+    }
   },
 
-  // Refund Information
+  // Timing
+  expiresAt: {
+    type: Date,
+    default: function() {
+      return new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from creation
+    }
+  },
+
+  paidAt: {
+    type: Date
+  },
+
+  // Refund information
   refund: {
-    amount: Number,
-    reason: String,
-    processedAt: Date,
-    processedBy: {
+    isRefunded: {
+      type: Boolean,
+      default: false
+    },
+    refundAmount: Number,
+    refundReason: String,
+    refundStatus: {
+      type: String,
+      enum: ['none', 'requested', 'approved', 'rejected', 'processed'],
+      default: 'none'
+    },
+    refundedAt: Date,
+    refundedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
     }
   },
 
-  // Timestamps
-  paidAt: Date,
-  expiresAt: {
-    type: Date,
-    default: function() {
-      // Payment expires in 30 minutes
-      return new Date(Date.now() + 30 * 60 * 1000);
-    }
+  // Additional charges
+  additionalCharges: [{
+    description: String,
+    amount: Number
+  }],
+
+  // Notes
+  notes: {
+    type: String,
+    maxlength: [500, 'Notes cannot exceed 500 characters']
   }
 }, {
   timestamps: true
 });
 
 // Indexes for better query performance
-paymentSchema.index({ booking: 1 });
 paymentSchema.index({ customer: 1 });
+paymentSchema.index({ mechanic: 1 });
+paymentSchema.index({ booking: 1 });
 paymentSchema.index({ status: 1 });
 paymentSchema.index({ paymentMethod: 1 });
-paymentSchema.index({ transactionId: 1 });
 paymentSchema.index({ createdAt: -1 });
+paymentSchema.index({ paymentId: 1 }, { unique: true });
 
-// Pre-save middleware to generate payment ID
-paymentSchema.pre('save', async function(next) {
-  if (this.isNew && !this.paymentId) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    this.paymentId = `PAY${year}${month}${day}${random}`;
-  }
-  next();
-});
-
-// Virtual for payment status display
-paymentSchema.virtual('statusDisplay').get(function() {
-  const statusMap = {
-    pending: 'Pending Payment',
-    processing: 'Processing',
-    completed: 'Payment Completed',
-    failed: 'Payment Failed',
-    cancelled: 'Payment Cancelled',
-    refunded: 'Refunded'
-  };
-  return statusMap[this.status] || this.status;
-});
-
-// Virtual for payment method display
-paymentSchema.virtual('methodDisplay').get(function() {
-  const methodMap = {
-    bkash: 'bKash',
-    nagad: 'Nagad',
-    rocket: 'Rocket',
-    upay: 'Upay',
-    tap: 'Tap',
-    sure_cash: 'Sure Cash'
-  };
-  return methodMap[this.paymentMethod] || this.paymentMethod;
-});
-
-// Method to check if payment is expired
+// Instance method to check if payment is expired
 paymentSchema.methods.isExpired = function() {
   return this.expiresAt && new Date() > this.expiresAt;
 };
 
-// Method to check if payment can be refunded
+// Instance method to check if payment can be refunded
 paymentSchema.methods.canRefund = function() {
-  return this.status === 'completed' && !this.refund.amount;
+  return this.status === 'completed' && !this.refund.isRefunded;
+};
+
+// Pre-save middleware to generate payment ID
+paymentSchema.pre('save', function(next) {
+  if (this.isNew && !this.paymentId) {
+    this.paymentId = `PAY${Date.now()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  }
+  next();
+});
+
+// Static method to get payment statistics
+paymentSchema.statics.getStats = async function(filter = {}) {
+  return await this.aggregate([
+    { $match: filter },
+    {
+      $group: {
+        _id: null,
+        totalPayments: { $sum: 1 },
+        totalAmount: { $sum: '$amount' },
+        completedPayments: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+        },
+        pendingPayments: {
+          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+        },
+        failedPayments: {
+          $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
+        },
+        refundedAmount: {
+          $sum: { $cond: [{ $eq: ['$refund.isRefunded', true] }, '$refund.refundAmount', 0] }
+        }
+      }
+    }
+  ]);
 };
 
 const Payment = mongoose.model('Payment', paymentSchema);

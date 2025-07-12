@@ -1,31 +1,32 @@
-import express, { Router } from "express";
+import express, { Router } from 'express';
 import {
   createPayment,
-  verifyPayment,
+  getPayments,
   getPayment,
-  getUserPayments,
-  cancelPayment,
-  processRefund,
+  updatePayment,
+  deletePayment,
+  processPayment,
+  getPaymentStats,
   adminGetAllPayments,
-  adminGetPaymentStats,
-} from "../controllers/payment.controller.js";
-import { protect, restrictTo } from "../controllers/auth.controller.js";
+  adminProcessRefund
+} from '../controllers/payment.controller.js';
+import { protect, restrictTo } from '../controllers/auth.controller.js';
 
 const paymentRouter = Router();
 
-// All payment routes require authentication
+// Protected routes
 paymentRouter.use(protect);
 
-// Customer routes
-paymentRouter.post("/", restrictTo("customer"), createPayment);
-paymentRouter.post("/verify", restrictTo("customer"), verifyPayment);
-paymentRouter.get("/my", restrictTo("customer"), getUserPayments);
-paymentRouter.get("/:paymentId", restrictTo("customer"), getPayment);
-paymentRouter.patch("/:paymentId/cancel", restrictTo("customer"), cancelPayment);
+// Customer and Mechanic routes
+paymentRouter.post('/', restrictTo('customer'), createPayment);
+paymentRouter.get('/', getPayments);
+paymentRouter.get('/stats', getPaymentStats);
+paymentRouter.get('/:id', getPayment);
+paymentRouter.patch('/:id', updatePayment);
+paymentRouter.post('/:id/process', processPayment);
 
 // Admin routes
-paymentRouter.get("/admin/all", restrictTo("admin"), adminGetAllPayments);
-paymentRouter.get("/admin/stats", restrictTo("admin"), adminGetPaymentStats);
-paymentRouter.post("/admin/:paymentId/refund", restrictTo("admin"), processRefund);
+paymentRouter.get('/admin/all', restrictTo('admin'), adminGetAllPayments);
+paymentRouter.post('/admin/:id/refund', restrictTo('admin'), adminProcessRefund);
 
 export default paymentRouter; 

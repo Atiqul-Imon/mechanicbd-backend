@@ -1,28 +1,33 @@
-import express from 'express';
-import { 
-  createReview, 
-  getServiceReviews, 
-  getMechanicReviews, 
-  getPendingReviews, 
-  approveReview 
+import express, { Router } from 'express';
+import {
+  createReview,
+  getReviews,
+  getReview,
+  updateReview,
+  deleteReview,
+  getReviewStats,
+  adminGetAllReviews,
+  adminDeleteReview
 } from '../controllers/review.controller.js';
 import { protect, restrictTo } from '../controllers/auth.controller.js';
 
-const router = express.Router();
+const reviewRouter = Router();
 
-// Create a review (customer, must be logged in)
-router.post('/', protect, createReview);
+// Public routes
+reviewRouter.get('/', getReviews);
+reviewRouter.get('/stats', getReviewStats);
 
-// Get reviews for a service
-router.get('/service/:id', getServiceReviews);
+// Protected routes
+reviewRouter.use(protect);
 
-// Get reviews for a mechanic
-router.get('/mechanic/:id', getMechanicReviews);
+// Customer and Mechanic routes
+reviewRouter.post('/', restrictTo('customer'), createReview);
+reviewRouter.get('/:id', getReview);
+reviewRouter.patch('/:id', restrictTo('customer'), updateReview);
+reviewRouter.delete('/:id', restrictTo('customer'), deleteReview);
 
-// Admin: Get pending reviews
-router.get('/pending', protect, restrictTo('admin'), getPendingReviews);
+// Admin routes
+reviewRouter.get('/admin/all', restrictTo('admin'), adminGetAllReviews);
+reviewRouter.delete('/admin/:id', restrictTo('admin'), adminDeleteReview);
 
-// Admin: Approve/reject review
-router.patch('/:id/approve', protect, restrictTo('admin'), approveReview);
-
-export default router; 
+export default reviewRouter; 
