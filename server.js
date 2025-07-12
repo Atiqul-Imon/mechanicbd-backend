@@ -15,40 +15,46 @@ const server = http.createServer(app);
 
 // Redis configuration for Socket.io scaling (optional)
 let redis = null;
-try {
-  redis = new Redis({
-    host: process.env.REDIS_HOST || 'localhost',
-    port: process.env.REDIS_PORT || 6379,
-    password: process.env.REDIS_PASSWORD,
-    retryDelayOnFailover: 100,
-    maxRetriesPerRequest: 3,
-    lazyConnect: true, // Don't connect immediately
-    retryDelayOnClusterDown: 300,
-    enableOfflineQueue: true, // Enable offline queue for better error handling
-    connectTimeout: 5000, // 5 second timeout
-    commandTimeout: 3000 // 3 second command timeout
-  });
-  
-  redis.on('error', (err) => {
-    console.log('Redis connection error (non-critical):', err.message);
+
+// Only configure Redis in development or if explicitly enabled
+if (process.env.NODE_ENV === 'development' && process.env.ENABLE_REDIS === 'true') {
+  try {
+    redis = new Redis({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: process.env.REDIS_PORT || 6379,
+      password: process.env.REDIS_PASSWORD,
+      retryDelayOnFailover: 100,
+      maxRetriesPerRequest: 3,
+      lazyConnect: true, // Don't connect immediately
+      retryDelayOnClusterDown: 300,
+      enableOfflineQueue: true, // Enable offline queue for better error handling
+      connectTimeout: 5000, // 5 second timeout
+      commandTimeout: 3000 // 3 second command timeout
+    });
+    
+    redis.on('error', (err) => {
+      console.log('Redis connection error (non-critical):', err.message);
+      redis = null;
+    });
+    
+    redis.on('connect', () => {
+      console.log('✅ Redis connected successfully');
+    });
+    
+    redis.on('ready', () => {
+      console.log('✅ Redis is ready');
+    });
+    
+    redis.on('close', () => {
+      console.log('Redis connection closed');
+      redis = null;
+    });
+  } catch (error) {
+    console.log('⚠️ Redis not available, continuing without Redis');
     redis = null;
-  });
-  
-  redis.on('connect', () => {
-    console.log('✅ Redis connected successfully');
-  });
-  
-  redis.on('ready', () => {
-    console.log('✅ Redis is ready');
-  });
-  
-  redis.on('close', () => {
-    console.log('Redis connection closed');
-    redis = null;
-  });
-} catch (error) {
-  console.log('⚠️ Redis not available, continuing without Redis');
-  redis = null;
+  }
+} else {
+  console.log('ℹ️ Redis disabled in production (set ENABLE_REDIS=true to enable)');
 }
 
 // Socket.io with optional Redis adapter for horizontal scaling
