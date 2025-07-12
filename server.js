@@ -13,22 +13,42 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// Redis configuration for Socket.io scaling
-const redis = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: process.env.REDIS_PORT || 6379,
-  password: process.env.REDIS_PASSWORD,
-  retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 3
-});
+// Redis configuration for Socket.io scaling (optional)
+let redis = null;
+try {
+  redis = new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: process.env.REDIS_PORT || 6379,
+    password: process.env.REDIS_PASSWORD,
+    retryDelayOnFailover: 100,
+    maxRetriesPerRequest: 3,
+    lazyConnect: true, // Don't connect immediately
+    retryDelayOnClusterDown: 300,
+    enableOfflineQueue: false
+  });
+  
+  redis.on('error', (err) => {
+    console.log('Redis connection error (non-critical):', err.message);
+    redis = null;
+  });
+  
+  redis.on('connect', () => {
+    console.log('✅ Redis connected successfully');
+  });
+} catch (error) {
+  console.log('⚠️ Redis not available, continuing without Redis');
+  redis = null;
+}
 
-// Socket.io with Redis adapter for horizontal scaling
+// Socket.io with optional Redis adapter for horizontal scaling
 const io = new SocketIoServer(server, {
   cors: {
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
     methods: ["GET", "POST"]
   }
 });
+
+// Redis adapter will be configured during server startup
 
 // Import routes
 import authRoutes from './routes/auth.route.js';
@@ -162,6 +182,22 @@ const PORT = process.env.PORT || 5000;
 const startServer = async () => {
   try {
     await connectDB();
+    
+    // Configure Redis adapter if Redis is available
+    if (redis) {
+      try {
+        const { createAdapter } = await import('@socket.io/redis-adapter');
+        const pubClient = redis;
+        const subClient = redis.duplicate();
+        io.adapter(createAdapter(pubClient, subClient));
+        console.log('✅ Socket.io Redis adapter configured');
+      } catch (error) {
+        console.log('⚠️ Failed to configure Redis adapter:', error.message);
+      }
+    } else {
+      console.log('⚠️ Socket.io running without Redis adapter');
+    }
+    
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
