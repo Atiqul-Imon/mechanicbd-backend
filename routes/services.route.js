@@ -12,6 +12,8 @@ import {
   adminToggleServiceStatus,
   adminApproveService,
   adminRejectService,
+  getSearchSuggestions,
+  getSearchAnalytics,
 } from "../controllers/service.controller.js";
 import { protect, restrictTo } from "../controllers/auth.controller.js";
 
@@ -20,6 +22,8 @@ const serviceRouter = Router();
 // Public routes
 serviceRouter.get("/", getAllServices);
 serviceRouter.get("/search", searchServices);
+serviceRouter.get("/search/suggestions", getSearchSuggestions);
+serviceRouter.get("/search/analytics", getSearchAnalytics);
 serviceRouter.get("/categories", getServiceCategories);
 
 // Admin routes (must come before parameterized routes)

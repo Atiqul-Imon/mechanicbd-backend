@@ -252,13 +252,42 @@ export const deleteService = async (req, res) => {
 // Search services
 export const searchServices = async (req, res) => {
   try {
-    const { q, category, location, minPrice, maxPrice } = req.query;
+    const { 
+      q, 
+      category, 
+      location, 
+      minPrice, 
+      maxPrice, 
+      minRating,
+      maxRating,
+      sortBy = 'relevance',
+      sortOrder = 'desc',
+      page = 1,
+      limit = 20,
+      availability,
+      priceType,
+      subcategory,
+      tags,
+      mechanicId
+    } = req.query;
     
-    const filter = { isActive: true, isAvailable: true };
+    const filter = { isActive: true, isAvailable: true, status: 'approved' };
     
-    // Text search
+    // Advanced text search with multiple fields
     if (q && q.trim()) {
-      filter.$text = { $search: q.trim() };
+      const searchTerms = q.trim().split(' ').filter(term => term.length > 0);
+      if (searchTerms.length > 0) {
+        const textSearchConditions = searchTerms.map(term => ({
+          $or: [
+            { title: { $regex: term, $options: 'i' } },
+            { description: { $regex: term, $options: 'i' } },
+            { tags: { $regex: term, $options: 'i' } },
+            { searchKeywords: { $regex: term, $options: 'i' } },
+            { subcategory: { $regex: term, $options: 'i' } }
+          ]
+        }));
+        filter.$and = textSearchConditions;
+      }
     }
     
     // Category filter
@@ -266,12 +295,20 @@ export const searchServices = async (req, res) => {
       filter.category = category.trim();
     }
     
-    // Location filter
-    if (location && location.trim()) {
-      filter.serviceArea = { $regex: location.trim(), $options: 'i' };
+    // Subcategory filter
+    if (subcategory && subcategory.trim()) {
+      filter.subcategory = { $regex: subcategory.trim(), $options: 'i' };
     }
     
-    // Price filter
+    // Location-based search with fuzzy matching
+    if (location && location.trim()) {
+      filter.$or = [
+        { serviceArea: { $regex: location.trim(), $options: 'i' } },
+        { 'mechanic.address': { $regex: location.trim(), $options: 'i' } }
+      ];
+    }
+    
+    // Price range filter
     if (minPrice || maxPrice) {
       filter.basePrice = {};
       if (minPrice && !isNaN(parseFloat(minPrice))) {
@@ -281,17 +318,163 @@ export const searchServices = async (req, res) => {
         filter.basePrice.$lte = parseFloat(maxPrice);
       }
     }
+    
+    // Rating filter
+    if (minRating || maxRating) {
+      filter.averageRating = {};
+      if (minRating && !isNaN(parseFloat(minRating))) {
+        filter.averageRating.$gte = parseFloat(minRating);
+      }
+      if (maxRating && !isNaN(parseFloat(maxRating))) {
+        filter.averageRating.$lte = parseFloat(maxRating);
+      }
+    }
+    
+    // Price type filter
+    if (priceType) {
+      filter.priceType = priceType;
+    }
+    
+    // Tags filter
+    if (tags) {
+      const tagArray = Array.isArray(tags) ? tags : [tags];
+      filter.tags = { $in: tagArray.map(tag => new RegExp(tag, 'i')) };
+    }
+    
+    // Mechanic filter
+    if (mechanicId) {
+      filter.mechanic = mechanicId;
+    }
+    
+    // Availability filter
+    if (availability) {
+      const availabilityMap = {
+        'today': { $expr: { $eq: [{ $dayOfWeek: new Date() }, 1] } },
+        'weekend': { $or: [{ 'availability.saturday.available': true }, { 'availability.sunday.available': true }] },
+        'weekday': { $or: [
+          { 'availability.monday.available': true },
+          { 'availability.tuesday.available': true },
+          { 'availability.wednesday.available': true },
+          { 'availability.thursday.available': true },
+          { 'availability.friday.available': true }
+        ]}
+      };
+      if (availabilityMap[availability]) {
+        Object.assign(filter, availabilityMap[availability]);
+      }
+    }
+    
+    // Build sort object
+    const sort = {};
+    switch (sortBy) {
+      case 'relevance':
+        if (q && q.trim()) {
+          // Use text score for relevance when searching
+          sort.score = { $meta: 'textScore' };
+        } else {
+          sort.averageRating = sortOrder === 'desc' ? -1 : 1;
+        }
+        break;
+      case 'price':
+        sort.basePrice = sortOrder === 'desc' ? -1 : 1;
+        break;
+      case 'rating':
+        sort.averageRating = sortOrder === 'desc' ? -1 : 1;
+        break;
+      case 'newest':
+        sort.createdAt = sortOrder === 'desc' ? -1 : 1;
+        break;
+      case 'popular':
+        sort.totalBookings = sortOrder === 'desc' ? -1 : 1;
+        break;
+      default:
+        sort.averageRating = -1;
+    }
+    
+    // Add secondary sort for consistency
+    if (sortBy !== 'relevance' || !q) {
+      sort.createdAt = -1;
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Execute query with pagination
     let services = await Service.find(filter)
-      .populate('mechanic', 'fullName profilePhoto averageRating isAvailable')
-      .sort(q ? { score: { $meta: 'textScore' } } : { averageRating: -1 })
-      .limit(20)
+      .populate('mechanic', 'fullName profilePhoto averageRating isAvailable totalReviews experience skills bio')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit))
       .lean();
+    
+    // Filter out services where mechanic is not available
     services = services.filter(s => s.mechanic && s.mechanic.isAvailable !== false);
+    
+    // Get total count for pagination
+    const total = await Service.countDocuments(filter);
+    
+    // Calculate relevance scores for search results
+    if (q && q.trim()) {
+      services = services.map(service => {
+        let score = 0;
+        const searchTerms = q.toLowerCase().split(' ');
+        
+        // Title match (highest weight)
+        searchTerms.forEach(term => {
+          if (service.title.toLowerCase().includes(term)) score += 10;
+        });
+        
+        // Description match
+        searchTerms.forEach(term => {
+          if (service.description.toLowerCase().includes(term)) score += 5;
+        });
+        
+        // Tags match
+        if (service.tags) {
+          searchTerms.forEach(term => {
+            if (service.tags.some(tag => tag.toLowerCase().includes(term))) score += 3;
+          });
+        }
+        
+        // Rating boost
+        if (service.averageRating) {
+          score += service.averageRating * 0.5;
+        }
+        
+        // Popularity boost
+        if (service.totalBookings) {
+          score += Math.min(service.totalBookings * 0.1, 5);
+        }
+        
+        return { ...service, relevanceScore: score };
+      });
+      
+      // Re-sort by relevance score
+      services.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    }
+    
     res.status(200).json({
       status: 'success',
       results: services.length,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalItems: total,
+        hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+        hasPrev: parseInt(page) > 1
+      },
       data: {
-        services: services || []
+        services: services || [],
+        searchQuery: q || null,
+        appliedFilters: {
+          category,
+          location,
+          minPrice,
+          maxPrice,
+          minRating,
+          maxRating,
+          sortBy,
+          sortOrder
+        }
       }
     });
   } catch (error) {
@@ -467,5 +650,189 @@ export const adminRejectService = async (req, res) => {
     res.status(200).json({ status: 'success', data: { service } });
   } catch (error) {
     res.status(500).json({ status: 'error', message: 'Error rejecting service', error: error.message });
+  }
+}; 
+
+// Track search analytics
+const trackSearchAnalytics = async (searchQuery, filters, resultsCount) => {
+  try {
+    // In a production environment, you would store this in a separate analytics collection
+    console.log('Search Analytics:', {
+      timestamp: new Date(),
+      query: searchQuery,
+      filters,
+      resultsCount,
+      userAgent: req?.headers['user-agent'],
+      ip: req?.ip
+    });
+  } catch (error) {
+    console.error('Error tracking search analytics:', error);
+  }
+};
+
+// Get search suggestions and analytics
+export const getSearchSuggestions = async (req, res) => {
+  try {
+    const { q, limit = 10 } = req.query;
+    
+    if (!q || q.trim().length < 2) {
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          suggestions: [],
+          popularSearches: [],
+          trendingCategories: []
+        }
+      });
+    }
+    
+    const searchTerm = q.trim().toLowerCase();
+    
+    // Get service title suggestions
+    const titleSuggestions = await Service.distinct('title', {
+      title: { $regex: searchTerm, $options: 'i' },
+      isActive: true,
+      status: 'approved'
+    });
+    
+    // Get category suggestions
+    const categorySuggestions = await Service.distinct('category', {
+      category: { $regex: searchTerm, $options: 'i' },
+      isActive: true,
+      status: 'approved'
+    });
+    
+    // Get tag suggestions
+    const tagSuggestions = await Service.distinct('tags', {
+      tags: { $regex: searchTerm, $options: 'i' },
+      isActive: true,
+      status: 'approved'
+    });
+    
+    // Get subcategory suggestions
+    const subcategorySuggestions = await Service.distinct('subcategory', {
+      subcategory: { $regex: searchTerm, $options: 'i' },
+      isActive: true,
+      status: 'approved'
+    });
+    
+    // Combine and rank suggestions
+    const allSuggestions = [
+      ...titleSuggestions.map(title => ({ text: title, type: 'service', relevance: 10 })),
+      ...categorySuggestions.map(cat => ({ text: cat, type: 'category', relevance: 8 })),
+      ...tagSuggestions.map(tag => ({ text: tag, type: 'tag', relevance: 6 })),
+      ...subcategorySuggestions.map(sub => ({ text: sub, type: 'subcategory', relevance: 7 }))
+    ];
+    
+    // Remove duplicates and sort by relevance
+    const uniqueSuggestions = allSuggestions
+      .filter((suggestion, index, self) => 
+        index === self.findIndex(s => s.text.toLowerCase() === suggestion.text.toLowerCase())
+      )
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, parseInt(limit));
+    
+    // Get popular searches (mock data for now - can be enhanced with analytics)
+    const popularSearches = [
+      'AC repair', 'electrical wiring', 'plumbing', 'car mechanic', 
+      'painting', 'cleaning', 'carpentry', 'appliance repair'
+    ];
+    
+    // Get trending categories
+    const trendingCategories = await Service.aggregate([
+      { $match: { isActive: true, status: 'approved' } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]);
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        suggestions: uniqueSuggestions,
+        popularSearches,
+        trendingCategories: trendingCategories.map(cat => ({
+          category: cat._id,
+          count: cat.count
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Error in getSearchSuggestions:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching search suggestions',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// Get search analytics and insights
+export const getSearchAnalytics = async (req, res) => {
+  try {
+    const { period = '30d' } = req.query;
+    
+    // Calculate date range
+    const now = new Date();
+    let startDate;
+    switch (period) {
+      case '7d':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case '30d':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      case '90d':
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+    
+    // Get popular categories
+    const popularCategories = await Service.aggregate([
+      { $match: { isActive: true, status: 'approved', createdAt: { $gte: startDate } } },
+      { $group: { _id: '$category', count: { $sum: 1 }, avgRating: { $avg: '$averageRating' } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+    
+    // Get price range distribution
+    const priceRanges = await Service.aggregate([
+      { $match: { isActive: true, status: 'approved' } },
+      {
+        $bucket: {
+          groupBy: '$basePrice',
+          boundaries: [0, 500, 1000, 2000, 5000, 10000],
+          default: 'Above 10000',
+          output: { count: { $sum: 1 } }
+        }
+      }
+    ]);
+    
+    // Get average ratings by category
+    const avgRatingsByCategory = await Service.aggregate([
+      { $match: { isActive: true, status: 'approved' } },
+      { $group: { _id: '$category', avgRating: { $avg: '$averageRating' }, count: { $sum: 1 } } },
+      { $sort: { avgRating: -1 } }
+    ]);
+    
+    res.status(200).json({
+      status: 'success',
+      data: {
+        period,
+        popularCategories,
+        priceRanges,
+        avgRatingsByCategory,
+        totalServices: await Service.countDocuments({ isActive: true, status: 'approved' })
+      }
+    });
+  } catch (error) {
+    console.error('Error in getSearchAnalytics:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error fetching search analytics',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
   }
 }; 
